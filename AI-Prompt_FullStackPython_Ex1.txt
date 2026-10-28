@@ -1,0 +1,51 @@
+You are an expert full-stack engineer specialized in Reflex (formerly Pynecone). Build a production-grade, functional web application named "BoxVault" (a Storage Boxes Management System) based on the following specifications.
+
+
+### System Rules & Constraints:
+1. Framework Rules: Use the latest Reflex syntax. Do not output any JavaScript, HTML, or CSS. The application must be 100% pure Python.
+2. State Management: All application state data must reside inside a class that extends `rx.State`. Event handlers that modify state must be defined within this class. 
+3. UI Logic Layout: Frontend UIs must be built using layout components (e.g., rx.vstack, rx.hstack, rx.box, rx.container). 
+4. Conditional Elements: Never use standard Python `if/else` logic inside the UI code layout. Use `rx.cond(condition, component_if_true, component_if_false)` for reactive conditional UI display.
+5. Loops & Lists: Use `rx.foreach(State.list_variable, render_component_function)` to render lists reactively.
+6. DB Layer: Use Reflex's built-in database model configuration (SQLModel-based) for state persistence where appropriate.
+
+### 1. Tech Stack Requirements
+- Framework: Pure Python using Reflex (rx). Reflex compiles Python code into React/Next.js components via Radix Themes.
+- State Management: Centralized rx.State with sub-states for Authentication and Inventory Management.
+- Database: Built-in Reflex database (SQLModel/SQLite) using strict typing.
+- Styling: Built-in Reflex components styled with clean layouts and custom responsive design parameters.
+
+### 2. App Overview & Core Logic
+The app allows users to manage physical storage boxes and track exactly what items are kept inside them. 
+- Authenticated users can create boxes, add items to boxes, delete items, perform instant keyword searches across all their stored inventory, and delete boxes.
+- Public/Unauthenticated users can only see a welcome landing page prompting them to log in.
+- Create default Administrator login for administrator to create, amend, delete users account.  The Administrator password will be requested when the first time login to the page.
+
+### 3. User Roles & Authentication
+- Secure User Authentication handled via Reflex State methods.
+- Session Management: A custom `rx.State` tracking `logged_in_user_id`.
+- Restricted Access: The main dashboard, box views, search bar, and mutating actions (Add/Delete) must be hidden or blocked unless a valid session exists.
+
+### 4. Database Schema (SQLModel Entities)
+- User: id (int, PK), username (str, unique), password_hash (str)
+- Box: id (int, PK), label_name (str), location (str, optional), user_id (int, FK to User)
+- Item: id (int, PK), name (str), description (str, optional), quantity (int), box_id (int, FK to Box)
+
+### 5. Reflex State & Event Handlers (Backend Logic)
+- A class `rxState` inheriting from rx.State containing variables (vars) and event handlers.
+- AuthState: Methods for `register_user`, `login_user`, and `logout`. It must safely hash and verify passwords.
+- InventoryState: 
+  - `add_box(name, location)`
+  - `add_item_to_box(box_id, item_name, quantity, description)`
+  - `delete_item(item_id)`
+  - `search_query` (string) bound to a search handler that filters items across all user boxes dynamically.
+
+### 6. Frontend UI Layout (Reflex Pages)
+- Welcome/Auth Page: A card layout switching between a sleek Login and Registration form.
+- Main App Layout (Authenticated only):
+  - Sidebar: Quick stats (total boxes, total items) and a "Log Out" button.
+  - Header: A sticky global search bar that updates results instantly as the user types.
+  - Box Grid: Responsive grid cards representing physical boxes. Each card shows the Box Title, a scrollable list of contents (items with quantities and a small delete bin icon), and an "Add Item" inline text input/button combo.
+  - Creation Area: A clean dashboard modal or top panel to quickly create a new named storage box.
+
+Please generate the modular directory structure first, then provide the complete implementation for the state file (`state.py`), the model schemas (`models.py`), and the primary view layout (`index.py`) to launch this Reflex MVP without relying on omitted placeholder blocks.

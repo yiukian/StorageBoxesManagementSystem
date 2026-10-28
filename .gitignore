@@ -1,0 +1,32 @@
+# Reflex compilation & Next.js build artifacts
+.web/
+assets/
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Databases & local state
+*.db
+*.sqlite
+*.sqlite3
+boxvault.db
+
+# Logs & temp files
+*.log
+.coverage
+htmlcov/
+.pytest_cache/
+
+# OS-specific
+.DS_Store
+Thumbs.db

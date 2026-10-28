@@ -1,0 +1,129 @@
+
+
+=========================
+
+AI prompt example for creating a full stack web app using python
+
+=========================
+
+To build a production-ready full-stack web application using AI, the single most critical factor is avoiding vague, one-liner prompts. Instead, your master prompt should read like a mini-technical specification that explicitly details the tech stack, data models, core features, and user roles.
+The highest-performing master prompt template can be used with code generation models or AI code editors (like Cursor or VS Code with GitHub Copilot) to scaffold a complete application.
+
+
+You are an expert full-stack engineer. Build a production-grade, functional web application named "[AppName]" based on the following specifications. 
+
+### 1. Tech Stack Requirements
+- Backend: Python (FastAPI / Flask) using a clean, modular structure.
+- Database: SQLite or PostgreSQL using SQLAlchemy/Pydantic for strict data validation and typing.
+- Frontend: [Choose option: Responsive HTML/Tailwind CSS via Jinja2 templates OR a modern single-page UI using React via a pure Python framework like Reflex/Streamlit].
+- Environment Management: Use a standard `requirements.txt` or `pyproject.toml` configuration.
+
+### 2. App Overview & Core Logic
+The app is a [e.g., Task & Project Tracker for small teams]. 
+The core objective is to allow users to [e.g., create projects, add milestone tasks, track completion percentages, and get an AI-generated summary of project health].
+
+### 3. User Roles & Authentication
+- Admin: Can manage all users, projects, and billing data.
+- Member: Can create projects, edit tasks, and run AI reports.
+- Viewer: Read-only access to specific project dashboards.
+
+### 4. Database Schema (Entities & Relationships)
+- User: id, email, password_hash, role, created_at
+- Project: id, name, description, owner_id (FK to User), created_at
+- Task: id, project_id (FK to Project), title, status (Pending, In Progress, Completed), due_date
+
+### 5. Backend API Endpoints (RESTful JSON)
+- POST /api/auth/register & /api/auth/login (JWT authentication)
+- GET & POST /api/projects (Fetch and create projects)
+- GET, PUT, & DELETE /api/tasks (Manage individual task workflows)
+- POST /api/ai/summary (Accepts a project ID, reads task statuses, and calls a mock or live LLM to return a project health summary)
+
+### 6. Frontend UI Requirements
+- Login/Registration Page.
+- Main Dashboard: A clean sidebar navigation panel, a statistics grid showing open vs. completed tasks, a interactive main table listing projects, and colored badge indicators for task priorities.
+- Project View: A view that renders specific task items and holds a prominent "Generate AI Status Report" button that displays the text results cleanly in a markdown container.
+
+Please generate the file directory structure first, then provide the complete, fully implemented code for the core configuration files (`main.py`, `models.py`, `database.py`) and the primary layout template to get the MVP running. Do not use placeholders or omit logic blocks.
+
+
+
+
+The Iterative Prompting Workflow
+
+As noted by developers on Reddit's AI Agents community, prompting quality alone doesn't guarantee success; you must treat your first prompt as an architectural scaffold, not a final system. Attempting to generate a massive full-stack app in a single prompt usually results in truncated code or missing features.
+To build efficiently, follow this 4-step iterative process:
+
+Step	Objective		Prompt Example
+Step 1	Scaffold & Structure	"Generate the boilerplate folder layout, requirements.txt, and database connection logic for the spec provided above."
+Step 2	Core Database & Logic	"Write the Pydantic/SQLAlchemy models in models.py and the CRUD database helper operations for handling user accounts."
+Step 3	API & Integrations	"Now build out the FastAPI endpoints for project handling, and configure CORS so the frontend can securely exchange JSON data."
+Step 4	UI & Refinement		"Build the primary dashboard UI using Tailwind classes. Ensure the task creation form pipes data into the backend endpoint successfully."
+
+================================
+
+I use Antigravity for the development. I prefer use a pure python stack and Reflex for the app development. The app is a storage boxes management system which record the items that stored in a box. The system need user authentication before add, delete, search items in the boxes.
+
+================================
+
+To work smoothly with Reflex, your prompt needs to structure state management (using Reflex rx.State) rather than traditional decoupled API routes. Reflex seamlessly unifies the frontend UI and backend state logic entirely in Python.
+Here is your tailored, copy-pasteable master architectural prompt optimized for Reflex and your storage boxes app.
+
+
+
+
+
+
+You are an expert full-stack engineer. Build a production-grade, functional web application named "[AppName]" based on the following specifications. 
+
+### 1. Tech Stack Requirements
+- Backend: Python (FastAPI / Flask) using a clean, modular structure.
+- Database: SQLite or PostgreSQL using SQLAlchemy/Pydantic for strict data validation and typing.
+- Frontend: [Choose option: Responsive HTML/Tailwind CSS via Jinja2 templates OR a modern single-page UI using React via a pure Python framework like Reflex/Streamlit].
+- Environment Management: Use a standard `requirements.txt` or `pyproject.toml` configuration.
+
+### 2. App Overview & Core Logic
+The app is a [e.g., Task & Project Tracker for small teams]. 
+The core objective is to allow users to [e.g., create projects, add milestone tasks, track completion percentages, and get an AI-generated summary of project health].
+
+### 3. User Roles & Authentication
+- Admin: Can manage all users, projects, and billing data.
+- Member: Can create projects, edit tasks, and run AI reports.
+- Viewer: Read-only access to specific project dashboards.
+
+### 4. Database Schema (Entities & Relationships)
+- User: id, email, password_hash, role, created_at
+- Project: id, name, description, owner_id (FK to User), created_at
+- Task: id, project_id (FK to Project), title, status (Pending, In Progress, Completed), due_date
+
+### 5. Backend API Endpoints (RESTful JSON)
+- POST /api/auth/register & /api/auth/login (JWT authentication)
+- GET & POST /api/projects (Fetch and create projects)
+- GET, PUT, & DELETE /api/tasks (Manage individual task workflows)
+- POST /api/ai/summary (Accepts a project ID, reads task statuses, and calls a mock or live LLM to return a project health summary)
+
+### 6. Frontend UI Requirements
+- Login/Registration Page.
+- Main Dashboard: A clean sidebar navigation panel, a statistics grid showing open vs. completed tasks, a interactive main table listing projects, and colored badge indicators for task priorities.
+- Project View: A view that renders specific task items and holds a prominent "Generate AI Status Report" button that displays the text results cleanly in a markdown container.
+
+Please generate the file directory structure first, then provide the complete, fully implemented code for the core configuration files (`main.py`, `models.py`, `database.py`) and the primary layout template to get the MVP running. Do not use placeholders or omit logic blocks.
+
+
+
+
+How to execute this with "Antigravity"
+
+Since you are using Antigravity (Python's built-in joke library for flying aside, typically referring to rapid, effortless Python deployment), Reflex fits this philosophy perfectly.
+When you feed this prompt into your AI tool, you can instruct it to write your components incrementally following this order:
+1. Initialize: reflex init boilerplate layout.
+2. Data Layer (models.py): Define the SQLModel connections between Users, Boxes, and Items.
+3. Logic Layer (state.py): Write the authentication check methods (rx.redirect blocks) to ensure users can't edit contents out of bounds.
+4. UI Layer (pages/): Construct the components binding text fields straight to the Python event hooks.
+Would you like to inject any specific advanced tracking features into this template before running it, such as QR code generation for labeling the physical boxes, or assigning categories/tags to items?
+
+
+
+
+
+
+

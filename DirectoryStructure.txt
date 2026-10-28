@@ -1,0 +1,26 @@
+StorageBoxesManagementSystem/
+├── rxconfig.py                         # Reflex config (app_name, SQLite DB connection)
+├── requirements.txt                    # Project dependencies (reflex, sqlmodel)
+├── README.md                           # Documentation, setup & run instructions
+└── box_vault/                          # Core application package
+    ├── __init__.py                     # Package initialization
+    ├── box_vault.py                    # Main Reflex app entrypoint & theme setup
+    ├── models.py                       # SQLModel database schemas (User, Box, Item)
+    ├── state.py                        # Centralized rx.State with Auth, Inventory & Admin sub-states
+    ├── index.py                        # Top-level index re-export
+    ├── pages/
+    │   ├── __init__.py
+    │   └── index.py                    # Primary reactive UI layout & conditional router
+    └── components/
+        ├── __init__.py
+        ├── auth_view.py                # Welcome hero, Login, Register, & Admin Setup cards
+        ├── sidebar.py                  # Navigation, user profile, and live inventory stats
+        ├── header.py                   # Sticky search bar & "+ New Box" modal trigger
+        ├── box_card.py                 # Responsive box cards with scrollable items & inline add form
+        ├── admin_panel.py              # Administrator user management (create, amend, delete)
+        └── modals.py                   # Modal dialogs for creation and editing
+
+
+
+
+
