@@ -16,7 +16,7 @@ def create_box_dialog() -> rx.Component:
             rx.cond(
                 InventoryState.inventory_error != "",
                 rx.callout.root(
-                    rx.callout.icon(rx.icon("alert-circle")),
+                    rx.callout.icon(rx.icon("circle-alert")),
                     rx.callout.text(InventoryState.inventory_error),
                     color_scheme="red",
                     size="1",
@@ -96,7 +96,7 @@ def add_item_dialog() -> rx.Component:
             rx.cond(
                 InventoryState.inventory_error != "",
                 rx.callout.root(
-                    rx.callout.icon(rx.icon("alert-circle")),
+                    rx.callout.icon(rx.icon("circle-alert")),
                     rx.callout.text(InventoryState.inventory_error),
                     color_scheme="red",
                     size="1",
@@ -183,7 +183,7 @@ def create_user_dialog() -> rx.Component:
             rx.cond(
                 AdminState.admin_error != "",
                 rx.callout.root(
-                    rx.callout.icon(rx.icon("alert-circle")),
+                    rx.callout.icon(rx.icon("circle-alert")),
                     rx.callout.text(AdminState.admin_error),
                     color_scheme="red",
                     size="1",
@@ -266,7 +266,7 @@ def edit_user_dialog() -> rx.Component:
             rx.cond(
                 AdminState.admin_error != "",
                 rx.callout.root(
-                    rx.callout.icon(rx.icon("alert-circle")),
+                    rx.callout.icon(rx.icon("circle-alert")),
                     rx.callout.text(AdminState.admin_error),
                     color_scheme="red",
                     size="1",

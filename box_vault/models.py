@@ -1,14 +1,18 @@
-"""Database models for BoxVault (Storage Boxes Management System).
+"""Database models and view schemas for BoxVault (Storage Boxes Management System).
 
-Uses Reflex's built-in SQLModel configuration for SQLite persistence.
+Uses SQLModel for SQLite persistence and Pydantic for strongly-typed UI view structures.
 """
 from datetime import datetime
-from typing import Optional
-import reflex as rx
-from sqlmodel import Field
+from typing import List, Optional
+from pydantic import BaseModel
+from sqlmodel import SQLModel, Field
 
 
-class User(rx.Model, table=True):
+# ==============================================================================
+# Database Persistence Entities (SQLModel)
+# ==============================================================================
+
+class User(SQLModel, table=True):
     """User account model for standard members and administrators."""
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True, nullable=False)
@@ -19,7 +23,7 @@ class User(rx.Model, table=True):
     )
 
 
-class Box(rx.Model, table=True):
+class Box(SQLModel, table=True):
     """Physical storage box model owned by a user."""
     id: Optional[int] = Field(default=None, primary_key=True)
     label_name: str = Field(nullable=False, index=True)
@@ -30,7 +34,7 @@ class Box(rx.Model, table=True):
     )
 
 
-class Item(rx.Model, table=True):
+class Item(SQLModel, table=True):
     """Individual item stored inside a storage box."""
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(nullable=False, index=True)
@@ -40,3 +44,35 @@ class Item(rx.Model, table=True):
     created_at: str = Field(
         default_factory=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     )
+
+
+# ==============================================================================
+# Strongly Typed UI View Models (Ensures type safety in rx.foreach)
+# ==============================================================================
+
+class ItemView(BaseModel):
+    """View model for items rendered inside box cards."""
+    id: int
+    name: str
+    quantity: int = 1
+    description: str = ""
+    box_id: int
+
+
+class BoxView(BaseModel):
+    """View model for physical storage boxes rendered in the grid."""
+    id: int
+    label_name: str
+    location: str = "General Storage"
+    item_count: int = 0
+    box_items: List[ItemView] = []
+
+
+class UserView(BaseModel):
+    """View model for user accounts rendered in the admin panel."""
+    id: int
+    username: str
+    is_admin: bool = False
+    created_at: str = ""
+    box_count: int = 0
+    item_count: int = 0

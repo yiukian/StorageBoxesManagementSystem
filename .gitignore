@@ -1,6 +1,10 @@
+.web
+assets/external/
+.states
 # Reflex compilation & Next.js build artifacts
 .web/
 assets/
+reflex.lock/
 
 # Python cache & bytecode
 __pycache__/

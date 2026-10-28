@@ -1,10 +1,10 @@
 """Administrator User Management view for managing user accounts."""
-from typing import Dict, Any
 import reflex as rx
+from box_vault.models import UserView
 from box_vault.state import AdminState, AuthState
 
 
-def render_user_row(user: Dict[str, Any]) -> rx.Component:
+def render_user_row(user: UserView) -> rx.Component:
     """Renders a single user row in the administrative user list."""
     return rx.card(
         rx.hstack(
@@ -17,8 +17,8 @@ def render_user_row(user: Dict[str, Any]) -> rx.Component:
                     border_radius="full",
                 ),
                 rx.vstack(
-                    rx.text(user["username"], font_weight="bold", size="3"),
-                    rx.text("Created: ", user["created_at"], size="1", color_scheme="gray"),
+                    rx.text(user.username, font_weight="bold", size="3"),
+                    rx.text("Created: ", user.created_at, size="1", color_scheme="gray"),
                     spacing="0",
                 ),
                 spacing="3",
@@ -29,7 +29,7 @@ def render_user_row(user: Dict[str, Any]) -> rx.Component:
             # Role Badge
             rx.box(
                 rx.cond(
-                    user["is_admin"],
+                    user.is_admin,
                     rx.badge(
                         rx.hstack(
                             rx.icon("shield-check", size=12),
@@ -50,7 +50,7 @@ def render_user_row(user: Dict[str, Any]) -> rx.Component:
                 rx.badge(
                     rx.hstack(
                         rx.icon("box", size=12),
-                        rx.text(user["box_count"], " boxes"),
+                        rx.text(user.box_count, " boxes"),
                         spacing="1",
                         align="center",
                     ),
@@ -60,7 +60,7 @@ def render_user_row(user: Dict[str, Any]) -> rx.Component:
                 rx.badge(
                     rx.hstack(
                         rx.icon("layers", size=12),
-                        rx.text(user["item_count"], " items"),
+                        rx.text(user.item_count, " items"),
                         spacing="1",
                         align="center",
                     ),
@@ -86,7 +86,7 @@ def render_user_row(user: Dict[str, Any]) -> rx.Component:
                     on_click=lambda: AdminState.open_edit_user(user),
                 ),
                 rx.cond(
-                    user["id"] != AuthState.logged_in_user_id,
+                    user.id != AuthState.logged_in_user_id,
                     rx.icon_button(
                         rx.icon("trash-2", size=16),
                         variant="ghost",
@@ -94,7 +94,7 @@ def render_user_row(user: Dict[str, Any]) -> rx.Component:
                         size="2",
                         cursor="pointer",
                         title="Delete User",
-                        on_click=lambda: AdminState.delete_user(user["id"]),
+                        on_click=lambda: AdminState.delete_user(user.id),
                     ),
                     rx.badge("Active Session", size="1", color_scheme="gray", variant="outline"),
                 ),
@@ -145,7 +145,7 @@ def admin_panel() -> rx.Component:
         rx.cond(
             AdminState.admin_error != "",
             rx.callout.root(
-                rx.callout.icon(rx.icon("alert-circle")),
+                rx.callout.icon(rx.icon("circle-alert")),
                 rx.callout.text(AdminState.admin_error),
                 color_scheme="red",
                 width="100%",
@@ -156,7 +156,7 @@ def admin_panel() -> rx.Component:
         rx.cond(
             AdminState.admin_success != "",
             rx.callout.root(
-                rx.callout.icon(rx.icon("check-circle-2")),
+                rx.callout.icon(rx.icon("circle-check")),
                 rx.callout.text(AdminState.admin_success),
                 color_scheme="green",
                 width="100%",

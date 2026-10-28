@@ -9,7 +9,7 @@ def auth_alerts() -> rx.Component:
         rx.cond(
             AuthState.auth_error != "",
             rx.callout.root(
-                rx.callout.icon(rx.icon("alert-circle")),
+                rx.callout.icon(rx.icon("circle-alert")),
                 rx.callout.text(AuthState.auth_error),
                 color_scheme="red",
                 role="alert",
@@ -20,7 +20,7 @@ def auth_alerts() -> rx.Component:
         rx.cond(
             AuthState.auth_success != "",
             rx.callout.root(
-                rx.callout.icon(rx.icon("check-circle-2")),
+                rx.callout.icon(rx.icon("circle-check")),
                 rx.callout.text(AuthState.auth_success),
                 color_scheme="green",
                 role="status",

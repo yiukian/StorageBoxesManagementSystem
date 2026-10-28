@@ -1,14 +1,14 @@
 """Box card component representing physical storage boxes and their contained items."""
-from typing import Dict, Any
 import reflex as rx
+from box_vault.models import ItemView, BoxView
 from box_vault.state import InventoryState
 
 
-def render_item_row(item: Dict[str, Any]) -> rx.Component:
+def render_item_row(item: ItemView) -> rx.Component:
     """Renders an individual item row inside a storage box with delete action."""
     return rx.hstack(
         rx.badge(
-            rx.text(item["quantity"], size="1", font_weight="bold"),
+            rx.text(item.quantity, size="1", font_weight="bold"),
             color_scheme="indigo",
             variant="solid",
             size="1",
@@ -16,15 +16,15 @@ def render_item_row(item: Dict[str, Any]) -> rx.Component:
         ),
         rx.vstack(
             rx.text(
-                item["name"],
+                item.name,
                 size="2",
                 font_weight="medium",
                 line_clamp=1,
             ),
             rx.cond(
-                item["description"] != "",
+                item.description != "",
                 rx.text(
-                    item["description"],
+                    item.description,
                     size="1",
                     color_scheme="gray",
                     line_clamp=1,
@@ -41,7 +41,7 @@ def render_item_row(item: Dict[str, Any]) -> rx.Component:
             color_scheme="red",
             cursor="pointer",
             title="Delete Item",
-            on_click=lambda: InventoryState.delete_item(item["id"]),
+            on_click=lambda: InventoryState.delete_item(item.id),
         ),
         align="center",
         spacing="2",
@@ -53,7 +53,7 @@ def render_item_row(item: Dict[str, Any]) -> rx.Component:
     )
 
 
-def render_box_card(box: Dict[str, Any]) -> rx.Component:
+def render_box_card(box: BoxView) -> rx.Component:
     """Renders a responsive card representing a physical storage box."""
     return rx.card(
         rx.vstack(
@@ -67,7 +67,7 @@ def render_box_card(box: Dict[str, Any]) -> rx.Component:
                         border_radius="6px",
                     ),
                     rx.heading(
-                        box["label_name"],
+                        box.label_name,
                         size="4",
                         weight="bold",
                         line_clamp=1,
@@ -83,7 +83,7 @@ def render_box_card(box: Dict[str, Any]) -> rx.Component:
                     color_scheme="red",
                     cursor="pointer",
                     title="Delete entire Box",
-                    on_click=lambda: InventoryState.delete_box(box["id"]),
+                    on_click=lambda: InventoryState.delete_box(box.id),
                 ),
                 align="center",
                 width="100%",
@@ -94,7 +94,7 @@ def render_box_card(box: Dict[str, Any]) -> rx.Component:
                 rx.badge(
                     rx.hstack(
                         rx.icon("map-pin", size=12),
-                        rx.text(box["location"], size="1"),
+                        rx.text(box.location, size="1"),
                         spacing="1",
                         align="center",
                     ),
@@ -105,7 +105,7 @@ def render_box_card(box: Dict[str, Any]) -> rx.Component:
                 rx.badge(
                     rx.hstack(
                         rx.icon("layers", size=12),
-                        rx.text(box["item_count"], " items", size="1"),
+                        rx.text(box.item_count, " items", size="1"),
                         spacing="1",
                         align="center",
                     ),
@@ -123,9 +123,9 @@ def render_box_card(box: Dict[str, Any]) -> rx.Component:
             # Scrollable List of Box Contents
             rx.scroll_area(
                 rx.cond(
-                    box["items"].length() > 0,
+                    box.item_count > 0,
                     rx.vstack(
-                        rx.foreach(box["items"], render_item_row),
+                        rx.foreach(box.box_items, render_item_row),
                         spacing="2",
                         width="100%",
                     ),
@@ -175,19 +175,19 @@ def render_box_card(box: Dict[str, Any]) -> rx.Component:
                         title="Add item quickly",
                     ),
                     rx.icon_button(
-                        rx.icon("edit", size=15),
+                        rx.icon("pencil", size=15),
                         variant="soft",
                         size="2",
                         color_scheme="gray",
                         cursor="pointer",
                         title="Add with details/description",
-                        on_click=lambda: InventoryState.open_add_item(box["id"], box["label_name"]),
+                        on_click=lambda: InventoryState.open_add_item(box.id, box.label_name),
                     ),
                     spacing="2",
                     align="center",
                     width="100%",
                 ),
-                on_submit=lambda form_data: InventoryState.quick_add_item(box["id"], form_data),
+                on_submit=lambda form_data: InventoryState.quick_add_item(box.id, form_data),
                 reset_on_submit=True,
                 width="100%",
             ),

@@ -8,11 +8,11 @@ Contains centralized rx.State with modular sub-states for:
 import hashlib
 import hmac
 import os
-from typing import Any, List, Optional
+from typing import List, Optional
 import reflex as rx
 from sqlmodel import select, SQLModel
 
-from box_vault.models import User, Box, Item
+from box_vault.models import User, Box, Item, ItemView, BoxView, UserView
 
 
 # ==============================================================================
@@ -137,6 +137,27 @@ class AuthState(rxState):
         self.auth_tab = tab
         self.auth_error = ""
         self.auth_success = ""
+
+    def set_login_username(self, val: str):
+        self.login_username = val
+
+    def set_login_password(self, val: str):
+        self.login_password = val
+
+    def set_register_username(self, val: str):
+        self.register_username = val
+
+    def set_register_password(self, val: str):
+        self.register_password = val
+
+    def set_register_confirm(self, val: str):
+        self.register_confirm = val
+
+    def set_admin_setup_password(self, val: str):
+        self.admin_setup_password = val
+
+    def set_admin_setup_confirm(self, val: str):
+        self.admin_setup_confirm = val
 
     def check_admin_status(self):
         """Checks if default administrator requires first-time password setup."""
@@ -319,7 +340,7 @@ class AuthState(rxState):
 
 class InventoryState(rxState):
     """Manages physical storage boxes, items inside boxes, and live searching."""
-    boxes: List[dict] = []
+    boxes: List[BoxView] = []
     search_query: str = ""
 
     # Box Creation Dialog Inputs
@@ -347,39 +368,39 @@ class InventoryState(rxState):
     @rx.var
     def total_items(self) -> int:
         """Returns total count of physical items across all boxes."""
-        total = 0
-        for box in self.boxes:
-            total += int(box.get("item_count", 0))
-        return total
+        return sum(b.item_count for b in self.boxes)
 
     @rx.var
-    def filtered_boxes(self) -> List[dict]:
+    def filtered_boxes(self) -> List[BoxView]:
         """Dynamically filters boxes and items by the sticky search bar keyword."""
         query = self.search_query.strip().lower()
         if not query:
             return self.boxes
 
-        results = []
+        results: List[BoxView] = []
         for box in self.boxes:
-            box_label = str(box.get("label_name", "")).lower()
-            box_location = str(box.get("location", "")).lower()
+            box_label = box.label_name.lower()
+            box_location = box.location.lower()
 
             box_matches = query in box_label or query in box_location
 
             # Filter matching items inside the box
-            matching_items = []
-            for item in box.get("items", []):
-                item_name = str(item.get("name", "")).lower()
-                item_desc = str(item.get("description", "")).lower()
-                if query in item_name or query in item_desc:
-                    matching_items.append(item)
+            matching_items = [
+                item for item in box.box_items
+                if query in item.name.lower() or query in item.description.lower()
+            ]
 
             if box_matches or matching_items:
-                # Include box; if box itself matched, display all items, else display matching items
-                filtered_box = dict(box)
-                filtered_box["items"] = box["items"] if box_matches else matching_items
-                filtered_box["item_count"] = len(filtered_box["items"])
-                results.append(filtered_box)
+                items_to_show = box.box_items if box_matches else matching_items
+                results.append(
+                    BoxView(
+                        id=box.id,
+                        label_name=box.label_name,
+                        location=box.location,
+                        item_count=sum(i.quantity for i in items_to_show),
+                        box_items=items_to_show,
+                    )
+                )
 
         return results
 
@@ -407,7 +428,7 @@ class InventoryState(rxState):
                 .order_by(Box.id.desc())
             ).all()
 
-            boxes_data = []
+            boxes_data: List[BoxView] = []
             for b in db_boxes:
                 # Fetch items for this box
                 db_items = session.exec(
@@ -417,27 +438,39 @@ class InventoryState(rxState):
                 ).all()
 
                 items_list = [
-                    {
-                        "id": item.id,
-                        "name": item.name,
-                        "quantity": item.quantity,
-                        "description": item.description or "",
-                        "box_id": item.box_id,
-                    }
+                    ItemView(
+                        id=item.id,
+                        name=item.name,
+                        quantity=item.quantity,
+                        description=item.description or "",
+                        box_id=item.box_id,
+                    )
                     for item in db_items
                 ]
 
-                boxes_data.append({
-                    "id": b.id,
-                    "label_name": b.label_name,
-                    "location": b.location or "General Storage",
-                    "item_count": sum(i["quantity"] for i in items_list),
-                    "items": items_list,
-                })
+                boxes_data.append(
+                    BoxView(
+                        id=b.id,
+                        label_name=b.label_name,
+                        location=b.location or "General Storage",
+                        item_count=sum(i.quantity for i in items_list),
+                        box_items=items_list,
+                    )
+                )
 
             self.boxes = boxes_data
 
-    # --- Box CRUD ---
+    def set_new_box_name(self, val: str):
+        self.new_box_name = val
+
+    def set_new_box_location(self, val: str):
+        self.new_box_location = val
+
+    def set_new_item_name(self, val: str):
+        self.new_item_name = val
+
+    def set_new_item_description(self, val: str):
+        self.new_item_description = val
 
     def open_create_box(self):
         """Opens the modal dialog to create a new storage box."""
@@ -597,7 +630,7 @@ class InventoryState(rxState):
 
 class AdminState(rxState):
     """Provides Administrator privileges to list, create, amend, and delete user accounts."""
-    users: List[dict] = []
+    users: List[UserView] = []
 
     # Create User Modal state
     is_create_user_open: bool = False
@@ -630,7 +663,7 @@ class AdminState(rxState):
 
         with rx.session() as session:
             all_users = session.exec(select(User).order_by(User.id.asc())).all()
-            user_data = []
+            user_data: List[UserView] = []
 
             for u in all_users:
                 # Count boxes
@@ -644,18 +677,30 @@ class AdminState(rxState):
                     items = session.exec(select(Item).where(Item.box_id.in_(box_ids))).all()
                     item_count = sum(i.quantity for i in items)
 
-                user_data.append({
-                    "id": u.id,
-                    "username": u.username,
-                    "is_admin": u.is_admin,
-                    "created_at": u.created_at or "N/A",
-                    "box_count": box_count,
-                    "item_count": item_count,
-                })
+                user_data.append(
+                    UserView(
+                        id=u.id,
+                        username=u.username,
+                        is_admin=u.is_admin,
+                        created_at=u.created_at or "N/A",
+                        box_count=box_count,
+                        item_count=item_count,
+                    )
+                )
 
             self.users = user_data
 
-    # --- Create User ---
+    def set_new_username(self, val: str):
+        self.new_username = val
+
+    def set_new_password(self, val: str):
+        self.new_password = val
+
+    def set_edit_username(self, val: str):
+        self.edit_username = val
+
+    def set_edit_password(self, val: str):
+        self.edit_password = val
 
     def open_create_user(self):
         """Opens user creation modal."""
@@ -711,12 +756,12 @@ class AdminState(rxState):
 
     # --- Amend/Edit User ---
 
-    def open_edit_user(self, user_dict: dict):
+    def open_edit_user(self, user: UserView):
         """Opens edit modal populated with existing user details."""
-        self.edit_user_id = user_dict.get("id", -1)
-        self.edit_username = user_dict.get("username", "")
+        self.edit_user_id = user.id
+        self.edit_username = user.username
         self.edit_password = ""  # Left empty unless admin desires to reset
-        self.edit_is_admin = bool(user_dict.get("is_admin", False))
+        self.edit_is_admin = user.is_admin
         self.admin_error = ""
         self.admin_success = ""
         self.is_edit_user_open = True
