@@ -1,15 +1,15 @@
-"""Modal dialogs for box creation, item details, and administrative user controls."""
+"""Modal dialogs for box creation, box editing, item details, and administrative user controls."""
 import reflex as rx
 from box_vault.state import InventoryState, AdminState
 
 
 def create_box_dialog() -> rx.Component:
-    """Dialog modal to create a new storage box."""
+    """Dialog modal to create a new storage box with sharing configuration."""
     return rx.dialog.root(
         rx.dialog.content(
             rx.dialog.title("Create Storage Box"),
             rx.dialog.description(
-                "Define a label name and physical storage location for your new box.",
+                "Define a label name, physical storage location, and visibility settings.",
                 size="2",
                 margin_bottom="4",
             ),
@@ -49,6 +49,38 @@ def create_box_dialog() -> rx.Component:
                     spacing="1",
                     width="100%",
                 ),
+                # Public / Sharing Switch
+                rx.hstack(
+                    rx.switch(
+                        checked=InventoryState.is_public,
+                        on_change=InventoryState.set_is_public,
+                    ),
+                    rx.text("Make Public (Visible to all users)", size="2", font_weight="medium"),
+                    spacing="2",
+                    align="center",
+                ),
+                # Specific Users Input (visible when is_public is False)
+                rx.cond(
+                    ~InventoryState.is_public,
+                    rx.vstack(
+                        rx.text("Share with Specific Users (Optional)", size="2", font_weight="medium"),
+                        rx.input(
+                            placeholder="Comma-separated usernames (e.g. alice, bob)",
+                            value=InventoryState.shared_with_usernames,
+                            on_change=InventoryState.set_shared_with_usernames,
+                            size="3",
+                            width="100%",
+                        ),
+                        rx.text(
+                            "These users will receive collaborative editing and deleting permissions.",
+                            size="1",
+                            color_scheme="gray",
+                        ),
+                        spacing="1",
+                        width="100%",
+                    ),
+                    rx.fragment(),
+                ),
                 spacing="4",
                 width="100%",
             ),
@@ -64,15 +96,113 @@ def create_box_dialog() -> rx.Component:
                 rx.button(
                     "Create Storage Box",
                     color_scheme="indigo",
-                    on_click=InventoryState.add_box,
+                    on_click=lambda: InventoryState.add_box(),
                 ),
                 spacing="3",
                 justify="end",
                 margin_top="5",
             ),
-            max_width="450px",
+            max_width="480px",
         ),
         open=InventoryState.is_create_box_open,
+    )
+
+
+def edit_box_dialog() -> rx.Component:
+    """Dialog modal to collaboratively edit box details, location, and access settings."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Edit Storage Box"),
+            rx.dialog.description(
+                "Modify box label name, location, or sharing permissions.",
+                size="2",
+                margin_bottom="4",
+            ),
+            rx.cond(
+                InventoryState.inventory_error != "",
+                rx.callout.root(
+                    rx.callout.icon(rx.icon("circle-alert")),
+                    rx.callout.text(InventoryState.inventory_error),
+                    color_scheme="red",
+                    size="1",
+                    margin_bottom="3",
+                ),
+                rx.fragment(),
+            ),
+            rx.vstack(
+                rx.vstack(
+                    rx.text("Box Label Name", size="2", font_weight="medium"),
+                    rx.input(
+                        value=InventoryState.edit_box_name,
+                        on_change=InventoryState.set_edit_box_name,
+                        size="3",
+                        width="100%",
+                    ),
+                    spacing="1",
+                    width="100%",
+                ),
+                rx.vstack(
+                    rx.text("Physical Location", size="2", font_weight="medium"),
+                    rx.input(
+                        value=InventoryState.edit_box_location,
+                        on_change=InventoryState.set_edit_box_location,
+                        size="3",
+                        width="100%",
+                    ),
+                    spacing="1",
+                    width="100%",
+                ),
+                # Public / Sharing Switch
+                rx.hstack(
+                    rx.switch(
+                        checked=InventoryState.edit_box_is_public,
+                        on_change=InventoryState.set_edit_box_is_public,
+                    ),
+                    rx.text("Make Public (Visible to all users)", size="2", font_weight="medium"),
+                    spacing="2",
+                    align="center",
+                ),
+                # Specific Users Input (visible when is_public is False)
+                rx.cond(
+                    ~InventoryState.edit_box_is_public,
+                    rx.vstack(
+                        rx.text("Share with Specific Users", size="2", font_weight="medium"),
+                        rx.input(
+                            placeholder="Comma-separated usernames (e.g. alice, bob)",
+                            value=InventoryState.edit_box_shared_with,
+                            on_change=InventoryState.set_edit_box_shared_with,
+                            size="3",
+                            width="100%",
+                        ),
+                        spacing="1",
+                        width="100%",
+                    ),
+                    rx.fragment(),
+                ),
+                spacing="4",
+                width="100%",
+            ),
+            rx.hstack(
+                rx.dialog.close(
+                    rx.button(
+                        "Cancel",
+                        variant="soft",
+                        color_scheme="gray",
+                        on_click=InventoryState.close_edit_box,
+                    ),
+                ),
+                rx.button(
+                    "Save Changes",
+                    color_scheme="indigo",
+                    on_click=lambda: InventoryState.edit_box(),
+                ),
+                spacing="3",
+                justify="end",
+                margin_top="5",
+            ),
+            max_width="480px",
+        ),
+        open=InventoryState.is_edit_box_open,
     )
 
 

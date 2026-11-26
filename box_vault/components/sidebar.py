@@ -4,7 +4,7 @@ from box_vault.state import AuthState, InventoryState, rxState
 
 
 def sidebar() -> rx.Component:
-    """Renders the left navigation sidebar with user profile and inventory statistics."""
+    """Renders the left navigation sidebar with user profile, archive toggles, and inventory statistics."""
     return rx.vstack(
         # App Branding Header
         rx.hstack(
@@ -83,6 +83,32 @@ def sidebar() -> rx.Component:
                 justify="start",
                 on_click=lambda: rxState.set_active_tab("inventory"),
             ),
+
+            # Sub-navigation for Active vs Archived boxes
+            rx.cond(
+                rxState.active_tab == "inventory",
+                rx.hstack(
+                    rx.button(
+                        "Active",
+                        size="1",
+                        variant=rx.cond(~InventoryState.show_archived, "solid", "ghost"),
+                        color_scheme=rx.cond(~InventoryState.show_archived, "indigo", "gray"),
+                        on_click=lambda: InventoryState.set_show_archived(False),
+                    ),
+                    rx.button(
+                        "Archived",
+                        size="1",
+                        variant=rx.cond(InventoryState.show_archived, "solid", "ghost"),
+                        color_scheme=rx.cond(InventoryState.show_archived, "amber", "gray"),
+                        on_click=lambda: InventoryState.set_show_archived(True),
+                    ),
+                    spacing="1",
+                    padding_left="3",
+                    width="100%",
+                ),
+                rx.fragment(),
+            ),
+
             rx.cond(
                 AuthState.is_admin,
                 rx.button(
@@ -105,10 +131,10 @@ def sidebar() -> rx.Component:
             margin_top="3",
         ),
 
-        # Quick Statistics Card
+        # Quick Statistics Card (Reflects Active Authorized Boxes and Items)
         rx.card(
             rx.vstack(
-                rx.text("Quick Inventory Stats", size="1", font_weight="bold", color_scheme="gray"),
+                rx.text("Active Inventory Stats", size="1", font_weight="bold", color_scheme="gray"),
                 rx.hstack(
                     rx.box(
                         rx.icon("boxes", size=20, color="var(--indigo-9)"),
@@ -117,7 +143,7 @@ def sidebar() -> rx.Component:
                         border_radius="8px",
                     ),
                     rx.vstack(
-                        rx.text("Total Boxes", size="1", color_scheme="gray"),
+                        rx.text("Active Boxes", size="1", color_scheme="gray"),
                         rx.text(InventoryState.total_boxes, size="4", font_weight="bold"),
                         spacing="0",
                     ),
@@ -133,7 +159,7 @@ def sidebar() -> rx.Component:
                         border_radius="8px",
                     ),
                     rx.vstack(
-                        rx.text("Total Items", size="1", color_scheme="gray"),
+                        rx.text("Active Items", size="1", color_scheme="gray"),
                         rx.text(InventoryState.total_items, size="4", font_weight="bold"),
                         spacing="0",
                     ),

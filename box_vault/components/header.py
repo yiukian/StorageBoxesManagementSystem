@@ -1,17 +1,17 @@
-"""Sticky top header bar with live search input and creation trigger."""
+"""Sticky top header bar with live search input, archive view toggle, and creation trigger."""
 import reflex as rx
 from box_vault.state import InventoryState, rxState
 
 
 def header() -> rx.Component:
-    """Renders the sticky global search and action header."""
+    """Renders the sticky global search, archive toggle, and action header."""
     return rx.box(
         rx.hstack(
             # Global Live Search Bar
             rx.hstack(
                 rx.icon("search", size=18, color="var(--gray-9)"),
                 rx.input(
-                    placeholder="Search boxes, storage locations, or items...",
+                    placeholder="Search boxes, locations, owners, or items...",
                     value=InventoryState.search_query,
                     on_change=InventoryState.set_search_query,
                     variant="surface",
@@ -32,12 +32,49 @@ def header() -> rx.Component:
                 align="center",
                 spacing="2",
                 flex="1",
-                max_width="650px",
+                max_width="520px",
             ),
 
             rx.spacer(),
 
-            # Action Area
+            # Archive View Toggle Buttons (Active vs. Archived)
+            rx.cond(
+                rxState.active_tab == "inventory",
+                rx.hstack(
+                    rx.button(
+                        rx.hstack(
+                            rx.icon("boxes", size=15),
+                            rx.text("Active Boxes"),
+                            spacing="1",
+                            align="center",
+                        ),
+                        size="2",
+                        variant=rx.cond(~InventoryState.show_archived, "solid", "surface"),
+                        color_scheme=rx.cond(~InventoryState.show_archived, "indigo", "gray"),
+                        cursor="pointer",
+                        on_click=lambda: InventoryState.set_show_archived(False),
+                    ),
+                    rx.button(
+                        rx.hstack(
+                            rx.icon("archive", size=15),
+                            rx.text("Archived Boxes"),
+                            spacing="1",
+                            align="center",
+                        ),
+                        size="2",
+                        variant=rx.cond(InventoryState.show_archived, "solid", "surface"),
+                        color_scheme=rx.cond(InventoryState.show_archived, "amber", "gray"),
+                        cursor="pointer",
+                        on_click=lambda: InventoryState.set_show_archived(True),
+                    ),
+                    spacing="1",
+                    align="center",
+                    padding_right="2",
+                ),
+                rx.fragment(),
+            ),
+
+            # Action Area: New Box Button
             rx.cond(
                 rxState.active_tab == "inventory",
                 rx.button(
