@@ -1,0 +1,70 @@
+Act as a Principal Full-Stack Python Architect specializing in the Reflex framework. We are upgrading our existing "BoxVault" application (a pure-Python Reflex + SQLModel storage box management app) to support shared/public boxes, collaborative editing/deleting, and soft-delete box archiving.
+
+Execute this upgrade sequentially in 4 strict phases. Do not skip ahead, and follow the Git checkpoint rules after each phase.
+
+---
+
+### Phase 0: Git Branch Initialization
+Before editing any files, run terminal commands to:
+1. Ensure the working directory is clean (or stash uncommitted changes if necessary).
+2. Create and checkout a new feature branch named `feat/shared-boxes-and-archiving`.
+
+---
+
+### Phase 1: Database Schema Revision (SQLModel Entities)
+Update our existing SQLModel definitions (`User`, `Box`, `Item`) to support multi-user box sharing and soft-delete archiving:
+1. `BoxAccess` (New Link Table): Create a Many-to-Many association model with `user_id` (int, FK to User, PK) and `box_id` (int, FK to Box, PK).
+2. `Box`: 
+   - Rename or replace `user_id` with `owner_id` (int, FK to User) to track the box creator.
+   - Add `is_public` (bool, default=True) for boxes shared with all users.
+   - Add `is_archived` (bool, default=False) to support soft-deleting boxes without removing records from the database.
+   - Add SQLModel relationships linking to `owner` and `shared_users` via `BoxAccess`.
+3. `User` & `Item`: Keep existing fields (`User`: id, username, password_hash; `Item`: id, name, description, quantity, box_id) and update relationships to match `Box` and `BoxAccess`.
+4. **Git Checkpoint 1:** Once the models are updated and verified, stage the files and commit with message: `feat(db): add BoxAccess, sharing flags, and soft-delete archive flag`
+
+---
+
+### Phase 2: Backend State, Collaborative Guards & Archiving (`AuthState` & `InventoryState`)
+Refactor our existing Reflex states (`AuthState` and `InventoryState`) without breaking `register_user`, `login_user`, or `logout`:
+1. **Box Creation (`add_box`)**:
+   - Update signature to `add_box(name, location, is_public=True, shared_with_usernames="")`.
+   - Set `owner_id` to the currently authenticated user's ID (retrieved via `AuthState`) and `is_archived=False`.
+   - If `is_public` is False and `shared_with_usernames` is provided (comma-separated string), look up those valid usernames in the DB and create corresponding `BoxAccess` records.
+2. **Access Queries, Archive View & Dynamic Search (`search_query`)**:
+   - Add a state toggle `show_archived: bool = False` (or separate computed vars for `active_boxes` and `archived_boxes`).
+   - Update box-fetching logic so a logged-in user ONLY sees boxes where they have permission (`Box.owner_id == current_user_id` OR `Box.is_public == True` OR `current_user_id` is in `BoxAccess`).
+   - Filter active views strictly to `Box.is_archived == False`, and archived views strictly to `Box.is_archived == True` (respecting the same user permission rules).
+   - Ensure `search_query` dynamically filters items across authorized boxes (matching the current active/archived view state).
+3. **Collaborative Permission Guards (`edit_box`, `archive_box` / `delete_box`, `add_item_to_box`, `delete_item`)**:
+   - **Rule:** Anyone authorized to view the box (Owner, Public viewer, or explicit `BoxAccess` user) is allowed to edit box details, add/delete items, and delete (archive) the box.
+   - Implement a helper method `_has_box_access(box_id, user_id)` and call it before ANY write, edit, or archive action. If unauthorized, block the DB commit and trigger `rx.window_alert("Unauthorized action")`.
+   - **Soft-Delete Implementation:** When a user deletes a box, do NOT call `session.delete(box)`. Instead, set `box.is_archived = True` and commit the update so the record and its items remain preserved in the database. (Optionally provide a `restore_box(box_id)` handler to set `is_archived = False`).
+4. **Git Checkpoint 2:** Verify there are no Python syntax or import errors, then stage and commit with message: `feat(state): implement collaborative permissions, search filters, and soft-delete archiving`
+
+---
+
+### Phase 3: Frontend UI Revision (Pure Reflex Components)
+Update our existing authenticated dashboard UI while strictly obeying Reflex rules (NO raw JS/HTML/CSS, NO Python `if/else` inside UI components—use `rx.cond()` and `rx.foreach()` exclusively):
+1. **Box Creation Modal / Panel**:
+   - Add an `rx.switch` labeled `"Make Public (Visible to all users)"` bound to `InventoryState.is_public`.
+   - Wrap a username input field in `rx.cond(~InventoryState.is_public, ...)` so when a box is not public, the owner can enter comma-separated usernames to share it with.
+2. **Archive View Toggle (Header or Sidebar)**:
+   - Add a clean toggle switch or tab button (`"Active Boxes"` vs. `"Archived Boxes"`) bound to `InventoryState.show_archived` so authorized users can view archived box records.
+3. **Box Grid Cards**:
+   - Add an `rx.badge` next to each Box Title displaying `"Public"` (green), `"Shared"` (blue), or `"Private"` (gray), plus an `"Archived"` badge (amber/red) when viewing archived boxes.
+   - Display a subtle `"Created by: [username]"` label on each card.
+   - **Collaborative Controls:** Since anyone with view access can edit or delete the box, make the `"Edit Box"` and `"Delete (Archive) Box"` buttons visible on all active box cards for authorized users.
+   - When `InventoryState.show_archived` is True, display archived boxes in a read-only visual state (e.g., slightly dimmed opacity, hiding the "Add Item" input and "Archive" button, with an optional `"Restore Box"` button).
+4. **Sidebar Stats**:
+   - Ensure total active box and item counters reflect the newly filtered authorized active boxes.
+5. **Git Checkpoint 3:** Run a quick Reflex compile/boot check to ensure zero frontend compilation errors, then stage and commit with message: `feat(ui): add sharing controls, archive view toggle, and collaborative box actions`
+
+---
+
+### Final Constraints:
+- If you encounter a SQLite schema mismatch due to the altered `Box` table during testing, inform me before deleting or resetting the local `.db` file.
+- Do NOT push the branch to remote (`git push`) when finished; leave it locally on `feat/shared-boxes-and-archiving` for my final review.
+
+
+
+
