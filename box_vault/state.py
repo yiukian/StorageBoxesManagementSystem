@@ -2,7 +2,7 @@
 
 Contains centralized rx.State with modular sub-states for:
 - AuthState: User session, registration, login, and first-time admin setup
-- InventoryState: Boxes, items, instant keyword search, and counts
+- InventoryState: Boxes, items, multi-user sharing, soft-delete archiving, and collaborative guards
 - AdminState: User account CRUD (create, amend, delete)
 """
 import hashlib
@@ -10,9 +10,9 @@ import hmac
 import os
 from typing import List, Optional
 import reflex as rx
-from sqlmodel import select, SQLModel
+from sqlmodel import select, or_, col, SQLModel
 
-from box_vault.models import User, Box, Item, ItemView, BoxView, UserView
+from box_vault.models import User, Box, Item, BoxAccess, ItemView, BoxView, UserView
 
 
 # ==============================================================================
@@ -339,14 +339,31 @@ class AuthState(rxState):
 # ==============================================================================
 
 class InventoryState(rxState):
-    """Manages physical storage boxes, items inside boxes, and live searching."""
+    """Manages physical storage boxes, items inside boxes, sharing, and soft-delete archiving."""
     boxes: List[BoxView] = []
     search_query: str = ""
+
+    # Active vs. Archived Boxes View Toggle
+    show_archived: bool = False
+
+    # Stats for active authorized inventory
+    total_active_boxes: int = 0
+    total_active_items: int = 0
 
     # Box Creation Dialog Inputs
     new_box_name: str = ""
     new_box_location: str = ""
+    is_public: bool = True  # Bound to UI Switch: "Make Public (Visible to all users)"
+    shared_with_usernames: str = ""  # Comma-separated usernames if not public
     is_create_box_open: bool = False
+
+    # Box Editing Dialog Inputs (Collaborative editing)
+    edit_box_id: int = -1
+    edit_box_name: str = ""
+    edit_box_location: str = ""
+    edit_box_is_public: bool = True
+    edit_box_shared_with: str = ""
+    is_edit_box_open: bool = False
 
     # Add Item to Box Dialog Inputs
     add_item_box_id: int = -1
@@ -362,13 +379,13 @@ class InventoryState(rxState):
 
     @rx.var
     def total_boxes(self) -> int:
-        """Returns total number of boxes owned by the user."""
-        return len(self.boxes)
+        """Returns total number of active authorized boxes accessible to the user."""
+        return self.total_active_boxes
 
     @rx.var
     def total_items(self) -> int:
-        """Returns total count of physical items across all boxes."""
-        return sum(b.item_count for b in self.boxes)
+        """Returns total count of physical items across active authorized boxes."""
+        return self.total_active_items
 
     @rx.var
     def filtered_boxes(self) -> List[BoxView]:
@@ -381,8 +398,9 @@ class InventoryState(rxState):
         for box in self.boxes:
             box_label = box.label_name.lower()
             box_location = box.location.lower()
+            box_owner = box.owner_username.lower()
 
-            box_matches = query in box_label or query in box_location
+            box_matches = query in box_label or query in box_location or query in box_owner
 
             # Filter matching items inside the box
             matching_items = [
@@ -397,8 +415,15 @@ class InventoryState(rxState):
                         id=box.id,
                         label_name=box.label_name,
                         location=box.location,
+                        owner_id=box.owner_id,
+                        owner_username=box.owner_username,
+                        is_public=box.is_public,
+                        is_archived=box.is_archived,
                         item_count=sum(i.quantity for i in items_to_show),
                         box_items=items_to_show,
+                        access_type=box.access_type,
+                        shared_with_usernames=box.shared_with_usernames,
+                        is_owner=box.is_owner,
                     )
                 )
 
@@ -408,23 +433,107 @@ class InventoryState(rxState):
         """Updates instant search query as the user types."""
         self.search_query = query
 
+    async def toggle_show_archived(self):
+        """Toggles between Active Boxes and Archived Boxes views."""
+        self.show_archived = not self.show_archived
+        await self.load_inventory()
+
+    async def set_show_archived(self, show: bool):
+        """Sets the active archive view flag and reloads inventory."""
+        self.show_archived = show
+        await self.load_inventory()
+
     def clear_inventory(self):
         """Clears local inventory state on logout."""
         self.boxes = []
         self.search_query = ""
+        self.show_archived = False
+        self.total_active_boxes = 0
+        self.total_active_items = 0
+
+    # --- Collaborative Access Helper ---
+
+    def _has_box_access(self, box_id: int, user_id: int) -> bool:
+        """Helper method verifying if a user has view/edit/delete access to a box.
+
+        Access is granted if:
+        1. User is the creator/owner (box.owner_id == user_id)
+        2. Box is public (box.is_public == True)
+        3. User is explicitly linked via BoxAccess link table
+        """
+        if user_id <= 0 or box_id <= 0:
+            return False
+
+        with rx.session() as session:
+            target_box = session.exec(select(Box).where(Box.id == box_id)).first()
+            if not target_box:
+                return False
+
+            # Owner has full access
+            if target_box.owner_id == user_id:
+                return True
+
+            # Public boxes are accessible to all authenticated users
+            if target_box.is_public:
+                return True
+
+            # Explicit BoxAccess sharing
+            access = session.exec(
+                select(BoxAccess).where(
+                    BoxAccess.box_id == box_id,
+                    BoxAccess.user_id == user_id
+                )
+            ).first()
+            return access is not None
 
     async def load_inventory(self):
-        """Fetches all boxes and nested items for the authenticated user."""
+        """Fetches all boxes and nested items authorized for the authenticated user.
+
+        A user ONLY sees boxes where:
+        Box.owner_id == current_user_id OR Box.is_public == True OR current_user_id is in BoxAccess.
+        Respects Box.is_archived == self.show_archived.
+        """
         auth = await self.get_state(AuthState)
         if not auth.is_authenticated:
             self.boxes = []
+            self.total_active_boxes = 0
+            self.total_active_items = 0
             return
 
+        current_user_id = auth.logged_in_user_id
+
         with rx.session() as session:
-            # Query boxes owned by logged in user
+            # Query IDs of boxes explicitly shared with the user
+            shared_box_ids = session.exec(
+                select(BoxAccess.box_id).where(BoxAccess.user_id == current_user_id)
+            ).all()
+
+            # Condition matching authorized boxes
+            auth_filter = or_(
+                Box.owner_id == current_user_id,
+                Box.is_public == True,
+                col(Box.id).in_(shared_box_ids) if shared_box_ids else False
+            )
+
+            # Compute active inventory statistics for sidebar
+            active_boxes = session.exec(
+                select(Box).where(auth_filter, Box.is_archived == False)
+            ).all()
+            self.total_active_boxes = len(active_boxes)
+
+            active_box_ids = [b.id for b in active_boxes]
+            if active_box_ids:
+                active_items = session.exec(
+                    select(Item).where(col(Item.box_id).in_(active_box_ids))
+                ).all()
+                self.total_active_items = sum(i.quantity for i in active_items)
+            else:
+                self.total_active_items = 0
+
+            # Fetch boxes matching the current show_archived view
             db_boxes = session.exec(
                 select(Box)
-                .where(Box.user_id == auth.logged_in_user_id)
+                .where(auth_filter, Box.is_archived == self.show_archived)
                 .order_by(Box.id.desc())
             ).all()
 
@@ -448,23 +557,59 @@ class InventoryState(rxState):
                     for item in db_items
                 ]
 
+                # Fetch box creator username
+                owner_user = session.exec(select(User).where(User.id == b.owner_id)).first()
+                owner_name = owner_user.username if owner_user else "Unknown"
+
+                # Fetch explicit shared usernames
+                shared_usernames = session.exec(
+                    select(User.username)
+                    .join(BoxAccess, BoxAccess.user_id == User.id)
+                    .where(BoxAccess.box_id == b.id)
+                ).all()
+
+                if b.is_public:
+                    access_type = "Public"
+                elif shared_usernames:
+                    access_type = "Shared"
+                else:
+                    access_type = "Private"
+
                 boxes_data.append(
                     BoxView(
                         id=b.id,
                         label_name=b.label_name,
                         location=b.location or "General Storage",
+                        owner_id=b.owner_id,
+                        owner_username=owner_name,
+                        is_public=b.is_public,
+                        is_archived=b.is_archived,
                         item_count=sum(i.quantity for i in items_list),
                         box_items=items_list,
+                        access_type=access_type,
+                        shared_with_usernames=", ".join(shared_usernames),
+                        is_owner=(b.owner_id == current_user_id),
                     )
                 )
 
             self.boxes = boxes_data
+
+    # --- Box Input Setters ---
 
     def set_new_box_name(self, val: str):
         self.new_box_name = val
 
     def set_new_box_location(self, val: str):
         self.new_box_location = val
+
+    def set_is_public(self, val: bool):
+        self.is_public = val
+
+    def toggle_is_public(self, val: bool):
+        self.is_public = val
+
+    def set_shared_with_usernames(self, val: str):
+        self.shared_with_usernames = val
 
     def set_new_item_name(self, val: str):
         self.new_item_name = val
@@ -476,6 +621,8 @@ class InventoryState(rxState):
         """Opens the modal dialog to create a new storage box."""
         self.new_box_name = ""
         self.new_box_location = ""
+        self.is_public = True
+        self.shared_with_usernames = ""
         self.inventory_error = ""
         self.is_create_box_open = True
 
@@ -483,13 +630,28 @@ class InventoryState(rxState):
         """Closes the create box modal."""
         self.is_create_box_open = False
 
-    async def add_box(self):
-        """Creates a new Box record in the database for the current user."""
-        self.inventory_error = ""
-        name = self.new_box_name.strip()
-        location = self.new_box_location.strip()
+    # --- Box Creation ---
 
-        if not name:
+    async def add_box(
+        self,
+        name: str = "",
+        location: str = "",
+        is_public: bool = True,
+        shared_with_usernames: str = "",
+    ):
+        """Creates a new Box record owned by the currently authenticated user.
+
+        If is_public is False and shared_with_usernames is provided, creates BoxAccess records.
+        """
+        self.inventory_error = ""
+
+        # Default to state variables if called from Reflex UI without direct arguments
+        box_name = name.strip() if name else self.new_box_name.strip()
+        box_location = location.strip() if location else self.new_box_location.strip()
+        box_is_public = is_public if name else self.is_public
+        box_shared_with = shared_with_usernames if name else self.shared_with_usernames
+
+        if not box_name:
             self.inventory_error = "Box Label Name is required."
             return
 
@@ -498,43 +660,159 @@ class InventoryState(rxState):
             self.inventory_error = "User session expired. Please log in again."
             return
 
+        current_user_id = auth.logged_in_user_id
+
         with rx.session() as session:
             new_box = Box(
-                label_name=name,
-                location=location if location else "General Storage",
-                user_id=auth.logged_in_user_id,
+                label_name=box_name,
+                location=box_location if box_location else "General Storage",
+                owner_id=current_user_id,
+                is_public=box_is_public,
+                is_archived=False,
             )
             session.add(new_box)
             session.commit()
+            session.refresh(new_box)
+
+            # If private/shared, link specified usernames via BoxAccess
+            if not box_is_public and box_shared_with.strip():
+                targets = [u.strip() for u in box_shared_with.split(",") if u.strip()]
+                for target_username in targets:
+                    target_user = session.exec(
+                        select(User).where(User.username == target_username)
+                    ).first()
+                    if target_user and target_user.id != current_user_id:
+                        session.add(BoxAccess(user_id=target_user.id, box_id=new_box.id))
+                session.commit()
 
         self.is_create_box_open = False
         self.new_box_name = ""
         self.new_box_location = ""
+        self.is_public = True
+        self.shared_with_usernames = ""
         await self.load_inventory()
 
-    async def delete_box(self, box_id: int):
-        """Deletes a storage box and all items contained inside it."""
+    # --- Box Editing (Collaborative) ---
+
+    def open_edit_box(self, box: BoxView):
+        """Opens edit modal for an authorized user to modify box details."""
+        self.edit_box_id = box.id
+        self.edit_box_name = box.label_name
+        self.edit_box_location = box.location
+        self.edit_box_is_public = box.is_public
+        self.edit_box_shared_with = box.shared_with_usernames
+        self.inventory_error = ""
+        self.is_edit_box_open = True
+
+    def close_edit_box(self):
+        """Closes the edit box modal."""
+        self.is_edit_box_open = False
+
+    def set_edit_box_name(self, val: str):
+        self.edit_box_name = val
+
+    def set_edit_box_location(self, val: str):
+        self.edit_box_location = val
+
+    def set_edit_box_is_public(self, val: bool):
+        self.edit_box_is_public = val
+
+    def toggle_edit_box_is_public(self, val: bool):
+        self.edit_box_is_public = val
+
+    def set_edit_box_shared_with(self, val: str):
+        self.edit_box_shared_with = val
+
+    async def edit_box(
+        self,
+        box_id: int = -1,
+        name: str = "",
+        location: str = "",
+        is_public: Optional[bool] = None,
+        shared_with_usernames: Optional[str] = None,
+    ):
+        """Amends box metadata after verifying collaborative permission guards."""
+        target_id = box_id if box_id > 0 else self.edit_box_id
         auth = await self.get_state(AuthState)
-        if not auth.is_authenticated:
+
+        # Collaborative guard check
+        if not self._has_box_access(target_id, auth.logged_in_user_id):
+            return rx.window_alert("Unauthorized action")
+
+        new_name = name.strip() if name else self.edit_box_name.strip()
+        new_loc = location.strip() if location else self.edit_box_location.strip()
+        new_pub = is_public if is_public is not None else self.edit_box_is_public
+        new_shared = shared_with_usernames if shared_with_usernames is not None else self.edit_box_shared_with
+
+        if not new_name:
+            self.inventory_error = "Box Label Name cannot be empty."
             return
 
         with rx.session() as session:
-            target_box = session.exec(
-                select(Box).where(Box.id == box_id, Box.user_id == auth.logged_in_user_id)
-            ).first()
+            box = session.exec(select(Box).where(Box.id == target_id)).first()
+            if not box:
+                return
 
+            box.label_name = new_name
+            box.location = new_loc if new_loc else "General Storage"
+            box.is_public = new_pub
+
+            # Update shared users via BoxAccess link table
+            old_accesses = session.exec(select(BoxAccess).where(BoxAccess.box_id == target_id)).all()
+            for oa in old_accesses:
+                session.delete(oa)
+
+            if not new_pub and new_shared.strip():
+                targets = [u.strip() for u in new_shared.split(",") if u.strip()]
+                for target_username in targets:
+                    target_user = session.exec(
+                        select(User).where(User.username == target_username)
+                    ).first()
+                    if target_user and target_user.id != box.owner_id:
+                        session.add(BoxAccess(user_id=target_user.id, box_id=target_id))
+
+            session.add(box)
+            session.commit()
+
+        self.is_edit_box_open = False
+        await self.load_inventory()
+
+    # --- Soft-Delete (Archive) & Restore Box ---
+
+    async def delete_box(self, box_id: int):
+        """Soft-deletes (archives) a storage box after checking collaborative permissions.
+
+        Preserves the box and all its items in the database by setting is_archived = True.
+        """
+        auth = await self.get_state(AuthState)
+        if not self._has_box_access(box_id, auth.logged_in_user_id):
+            return rx.window_alert("Unauthorized action")
+
+        with rx.session() as session:
+            target_box = session.exec(select(Box).where(Box.id == box_id)).first()
             if target_box:
-                # Delete items in box
-                items = session.exec(select(Item).where(Item.box_id == box_id)).all()
-                for item in items:
-                    session.delete(item)
-                # Delete box
-                session.delete(target_box)
+                target_box.is_archived = True
+                session.add(target_box)
                 session.commit()
 
         await self.load_inventory()
 
-    # --- Item CRUD ---
+    async def restore_box(self, box_id: int):
+        """Restores a soft-deleted (archived) storage box back to active inventory."""
+        auth = await self.get_state(AuthState)
+        if not self._has_box_access(box_id, auth.logged_in_user_id):
+            return rx.window_alert("Unauthorized action")
+
+        with rx.session() as session:
+            target_box = session.exec(select(Box).where(Box.id == box_id)).first()
+            if target_box:
+                target_box.is_archived = False
+                session.add(target_box)
+                session.commit()
+
+        await self.load_inventory()
+
+    # --- Item CRUD (Collaborative Guards) ---
 
     def open_add_item(self, box_id: int, box_name: str):
         """Opens the add item dialog targeted to a specific box."""
@@ -559,18 +837,20 @@ class InventoryState(rxState):
             self.new_item_quantity = 1
 
     async def add_item_to_box(self):
-        """Inserts a new item into the specified storage box."""
+        """Inserts a new item into the box after verifying collaborative permissions."""
         self.inventory_error = ""
+        auth = await self.get_state(AuthState)
+
+        # Collaborative permission guard
+        if not self._has_box_access(self.add_item_box_id, auth.logged_in_user_id):
+            return rx.window_alert("Unauthorized action")
+
         name = self.new_item_name.strip()
         desc = self.new_item_description.strip()
         qty = max(1, self.new_item_quantity)
 
         if not name:
             self.inventory_error = "Item Name cannot be empty."
-            return
-
-        if self.add_item_box_id <= 0:
-            self.inventory_error = "No target box selected."
             return
 
         with rx.session() as session:
@@ -589,18 +869,14 @@ class InventoryState(rxState):
         self.new_item_quantity = 1
         await self.load_inventory()
 
-    async def delete_item(self, item_id: int):
-        """Removes a specific item from a box."""
-        with rx.session() as session:
-            item = session.exec(select(Item).where(Item.id == item_id)).first()
-            if item:
-                session.delete(item)
-                session.commit()
-
-        await self.load_inventory()
-
     async def quick_add_item(self, box_id: int, form_data: dict):
-        """Quickly adds an item directly from the inline card input."""
+        """Quickly adds an item directly from the inline card input after permission check."""
+        auth = await self.get_state(AuthState)
+
+        # Collaborative permission guard
+        if not self._has_box_access(box_id, auth.logged_in_user_id):
+            return rx.window_alert("Unauthorized action")
+
         name = form_data.get("item_name", "").strip()
         qty_str = form_data.get("quantity", "1")
         try:
@@ -619,6 +895,24 @@ class InventoryState(rxState):
                 box_id=box_id,
             )
             session.add(new_item)
+            session.commit()
+
+        await self.load_inventory()
+
+    async def delete_item(self, item_id: int):
+        """Removes a specific item after verifying collaborative access to the parent box."""
+        auth = await self.get_state(AuthState)
+
+        with rx.session() as session:
+            item = session.exec(select(Item).where(Item.id == item_id)).first()
+            if not item:
+                return
+
+            # Collaborative permission guard on parent box
+            if not self._has_box_access(item.box_id, auth.logged_in_user_id):
+                return rx.window_alert("Unauthorized action")
+
+            session.delete(item)
             session.commit()
 
         await self.load_inventory()
@@ -666,15 +960,15 @@ class AdminState(rxState):
             user_data: List[UserView] = []
 
             for u in all_users:
-                # Count boxes
-                boxes = session.exec(select(Box).where(Box.user_id == u.id)).all()
+                # Count boxes owned by this user
+                boxes = session.exec(select(Box).where(Box.owner_id == u.id)).all()
                 box_count = len(boxes)
                 box_ids = [b.id for b in boxes]
 
-                # Count items across user boxes
+                # Count items across user's owned boxes
                 item_count = 0
                 if box_ids:
-                    items = session.exec(select(Item).where(Item.box_id.in_(box_ids))).all()
+                    items = session.exec(select(Item).where(col(Item.box_id).in_(box_ids))).all()
                     item_count = sum(i.quantity for i in items)
 
                 user_data.append(
@@ -819,7 +1113,7 @@ class AdminState(rxState):
     # --- Delete User ---
 
     async def delete_user(self, user_id: int):
-        """Deletes a user account and purges their boxes and items."""
+        """Deletes a user account and purges their owned boxes and items."""
         self.admin_error = ""
         auth = await self.get_state(AuthState)
 
@@ -833,12 +1127,22 @@ class AdminState(rxState):
             if not user:
                 return
 
-            # Delete all user's boxes and their items
-            boxes = session.exec(select(Box).where(Box.user_id == user_id)).all()
+            # Remove BoxAccess links for this user
+            user_accesses = session.exec(select(BoxAccess).where(BoxAccess.user_id == user_id)).all()
+            for ua in user_accesses:
+                session.delete(ua)
+
+            # Delete all user's owned boxes, their items, and any BoxAccess links
+            boxes = session.exec(select(Box).where(Box.owner_id == user_id)).all()
             for b in boxes:
+                # Delete items
                 items = session.exec(select(Item).where(Item.box_id == b.id)).all()
                 for item in items:
                     session.delete(item)
+                # Delete BoxAccess entries for this box
+                box_accesses = session.exec(select(BoxAccess).where(BoxAccess.box_id == b.id)).all()
+                for ba in box_accesses:
+                    session.delete(ba)
                 session.delete(b)
 
             session.delete(user)
